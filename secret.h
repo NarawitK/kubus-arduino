@@ -1,0 +1,4 @@
+#define SECRET_SSID "SSID"
+#define SECRET_PASS "PASS"
+#define SECRET_SERVER "SERVER_ADDRESS"
+#define BUS_ID INT

@@ -1,42 +1,39 @@
 #include <ArduinoJson.h>
+#include "secret.h"
 #include <SPI.h>
 #include <WiFiNINA.h>
 #include <TinyGPS++.h>
-#include <SoftwareSerial.h>
 
-static const int RXPin = 2, TXPin = 3;
 static const uint32_t GPSBaud = 9600;
 
-//TinyGPS++ Object
+const int ledPin =  LED_BUILTIN;
+int ledState = LOW;
+unsigned long previousMillis = 0;
+const long blinkInterval = 1000;
+
 TinyGPSPlus gps;
 
-// The serial connection to the GPS device
-SoftwareSerial ss(RXPin, TXPin);
-/*
-   Real-Server
-   char server[] = "158.108.207.4";
-*/
-char ssid_name[] = "Test";
-char pass[] = "qjmg8259";
-//char pass[] = "LVVM01277";
-char server[] = "158.108.207.4";
+char ssid_name[] = SECRET_SSID;
+char pass[] = SECRET_PASS;
+char server[] = SECRET_SERVER;
 WiFiClient client;
 int status = WL_IDLE_STATUS;
 unsigned long lastConnectionTime = 0;
-const unsigned long postingInterval = 7L * 1000L;
+const unsigned long postingInterval = 5L * 1000L;
 
 float latitude, longitude, spd, course;
-//Hard-coded busid by device
-int BusID = 98;
+int BusID = BUS_ID;
 
 void setup() {
   // put your setup code here, to run once:
   Serial.begin(9600);
-  ss.begin(GPSBaud);
+  Serial1.begin(GPSBaud);
+  pinMode(ledPin, OUTPUT);
 
   // check for the WiFi module
   if (WiFi.status() == WL_NO_MODULE) {
     Serial.println("Communication with WiFi module failed!");
+
     // don't continue
     while (true);
   }
@@ -47,58 +44,68 @@ void setup() {
 }
 
 void loop() {
-  checkWiFiConnection();
-  while (ss.available() > 0) {
-    if (gps.encode(ss.read()) && gps.location.isUpdated() ) {
-      displayInfo();
-      if (millis() - lastConnectionTime > postingInterval) {
-        if (client.connected()) {
-          client.stop();
-        }
+  while (Serial1.available() > 0) {
+    if (gps.encode(Serial1.read()) && gps.location.isUpdated() ) {
+      GatherInfo();
+      if (millis() - lastConnectionTime > postingInterval ) {
         UpdateLocation();
       }
     }
   }
   if (millis() > 5000 && gps.charsProcessed() < 10) {
     Serial.println("ERROR: not getting any GPS data!");
-    while (millis() > 5000 && gps.charsProcessed() < 10);
   }
 }
 
 void UpdateLocation() {
-  delay(1000);
+  checkWiFiConnection();
+  /*
+  if (client.connected()) {
+    Serial.println("Stopping connection");
+    client.stop();
+  }*/
   if (client.connect(server, 80)) {
-    char mode[] = "p1";
-    const int capacity = JSON_OBJECT_SIZE(8);
+    Serial.println("Generating POST Header");
+    //char mode[] = "p1";
+    const int capacity = JSON_OBJECT_SIZE(7);
     StaticJsonDocument<capacity> doc;
-    doc["postmode"] = mode;
+    //doc["postmode"] = mode;
     doc["bus_id"] = BusID;
     doc["latitude"] = latitude;
     doc["longitude"] = longitude;
     doc["course"] = course;
     doc["speed"] = spd;
-    client.println("POST /kubus/api/bus_post.php HTTP/1.1");
+    client.print("POST /kubus/api/v1/bus_post.php");
+    //client.print("POST /kubus/api/v2/gps-update-location/");
+    //client.print(BusID);
+    client.println(" HTTP/1.1");
     client.print("Host: ");
     client.println(server);
     client.println("User-Agent: ArduinoWiFi/1.1");
-    client.println("Content-Type: application/json");
+    client.println("Access-Control-Allow-Origin: *");
     client.print("Content-Length: ");
     client.println(measureJson(doc));
+    client.println("Content-Type: application/json");
     client.println("Connection: close");
     client.println();
     serializeJson(doc, client);
 
     lastConnectionTime = millis();
-    serializeJson(doc, Serial);
     Serial.println();
     Serial.println("Uploaded");
+    Serial.println("Stopping connection");
+    client.stop();
   }
   else {
     Serial.println("UpdateLocationFailed.");
+    if (client.connected()) {
+      Serial.println("Stopping connection");
+      client.stop();
+    }
   }
 }
 
-void displayInfo() {
+void GatherInfo() {
   Serial.print(F("Location: "));
   if (gps.location.isValid()) {
     latitude = gps.location.lat();
@@ -153,13 +160,12 @@ void displayInfo() {
 void connectToWifi() {
   while (status != WL_CONNECTED) {
     Serial.print("Attempting to connect to open SSID: ");
+    BlinkLED();
     Serial.println(ssid_name);
-    //status = WiFi.begin(ssid_name);
     status = WiFi.begin(ssid_name, pass);
-    delay(10000);
-    // wait 10 secs. for connection
+    // wait 5 secs. for connection
     if (status == WL_CONNECTED) {
-      digitalWrite(9, HIGH);
+      LEDOn();
     }
   }
 }
@@ -167,13 +173,35 @@ void connectToWifi() {
 void checkWiFiConnection() {
   status = WiFi.status();
   if (status == WL_DISCONNECTED || status == WL_CONNECTION_LOST) {
-    digitalWrite(9, LOW);
-    Serial.println(status);
+    LEDOff();
     connectToWifi();
     printCurrentNet();
     printWifiData();
   }
 }
+
+void BlinkLED() {
+  unsigned long currentMillis = millis();
+  if (currentMillis - previousMillis >= blinkInterval) {
+    previousMillis = currentMillis;
+    // if the LED is off turn it on:
+    if (ledState == LOW) {
+      LEDOn();
+    } 
+    else {
+      LEDOff();
+    }
+  }
+}
+void LEDOn() {
+  ledState = HIGH;
+  digitalWrite(ledPin, ledState);
+}
+void LEDOff() {
+  ledState = LOW;
+  digitalWrite(ledPin, ledState);
+}
+
 //Testing Purpose.
 void printWifiData() {
   // print your board's IP address:
