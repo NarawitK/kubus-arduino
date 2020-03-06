@@ -19,7 +19,7 @@ char server[] = SECRET_SERVER;
 WiFiClient client;
 int status = WL_IDLE_STATUS;
 unsigned long lastConnectionTime = 0;
-const unsigned long postingInterval = 5L * 1000L;
+const unsigned long postingInterval = 2L * 1000L;
 
 float latitude, longitude, spd, course;
 int BusID = BUS_ID;
@@ -59,11 +59,9 @@ void loop() {
 
 void UpdateLocation() {
   checkWiFiConnection();
-  /*
   if (client.connected()) {
-    Serial.println("Stopping connection");
     client.stop();
-  }*/
+  }
   if (client.connect(server, 80)) {
     Serial.println("Generating POST Header");
     //char mode[] = "p1";
@@ -93,13 +91,10 @@ void UpdateLocation() {
     lastConnectionTime = millis();
     Serial.println();
     Serial.println("Uploaded");
-    Serial.println("Stopping connection");
-    client.stop();
   }
   else {
     Serial.println("UpdateLocationFailed.");
     if (client.connected()) {
-      Serial.println("Stopping connection");
       client.stop();
     }
   }
